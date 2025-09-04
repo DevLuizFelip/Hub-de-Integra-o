@@ -1,2 +1,11 @@
-# Hub-de-Integra-o
-Hub de Integração E-commerce (Vtex &lt;> ERP)
+Projeto: Hub de Integração E-commerce (VTEX <> ERP)Este projeto é uma simulação de um middleware (Hub de Integração) construído em Node.js, responsável por sincronizar dados entre uma plataforma de e-commerce (VTEX) e um sistema de gestão (ERP).O objetivo é demonstrar competências em desenvolvimento backend, arquitetura de microsserviços e integrações via API, habilidades comumente exigidas em vagas de tecnologia para e-commerce.ArquiteturaO projeto é dividido em três serviços independentes que se comunicam via API REST:Mock API do ERP (/erp-mock): Um servidor Node.js/Express que simula os endpoints de um ERP, como o recebimento de novos pedidos e consulta de produtos.Hub de Integração (/integration-hub): O serviço central, também em Node.js/Express. Ele contém a lógica de negócio para buscar dados na "VTEX", transformá-los e enviá-los ao ERP.Painel de Controle (/dashboard-react): Uma interface frontend construída em React para visualizar os logs da integração em tempo real e acionar sincronizações manuais.Tecnologias UtilizadasBackend: Node.js, Express.js, AxiosFrontend: React.js, TailwindCSSOrquestração: Docker, Docker ComposeTestes (sugestão): JestComo Executar o ProjetoExistem duas maneiras de rodar a aplicação: localmente (modo de desenvolvimento) ou via Docker (recomendado).1. Rodando com Docker (Recomendado)Pré-requisitos: Docker e Docker Compose instalados.Com o Docker em execução na sua máquina, basta rodar o seguinte comando na raiz do projeto:docker-compose up --build
+Os três serviços serão construídos e iniciados automaticamente.O Painel de Controle estará acessível em: http://localhost:3000O Hub de Integração estará na porta: 3001A Mock API do ERP estará na porta: 30022. Rodando Localmente (Modo de Desenvolvimento)Pré-requisitos: Node.js (v16+) instalado.Você precisará de 3 terminais abertos, um para cada serviço.Terminal 1: Iniciar o ERP Mockcd erp-mock
+npm install
+node server.js
+Terminal 2: Iniciar o Hub de Integraçãocd integration-hub
+npm install
+node server.js
+Terminal 3: Iniciar o Painel Reactcd dashboard-react
+npm install
+npm start
+Após iniciar os três serviços, acesse http://localhost:3000 no seu navegador.
