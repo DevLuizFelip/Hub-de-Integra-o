@@ -108,3 +108,7 @@ Para parar os containers:
 Pressione Ctrl + C no terminal onde o docker-compose está rodando, ou execute em outro terminal:
 
 docker-compose down
+
+
+Vídeo explicativo do projeto:
+https://www.loom.com/share/58375dc1a46146e6adbbb107de9382b5?sid=9ae8e551-abe1-4d65-b5f9-e3577b58fbe7
