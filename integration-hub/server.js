@@ -1,105 +1,87 @@
 const express = require('express');
 const cors = require('cors');
 const axios = require('axios');
-const app = express();
-const port = 3001;
 
-// --- ALTERAÇÃO PRINCIPAL ---
-// Lê a URL da API do ERP a partir de uma variável de ambiente.
-// Se a variável não for definida, usa 'localhost' como padrão para desenvolvimento local.
-const ERP_API_URL = process.env.ERP_API_URL || 'http://localhost:3002/pedido';
+const app = express();
+const PORT = 3001;
 
 app.use(cors());
 app.use(express.json());
 
-// Armazena os logs de sincronização em memória
+// Array para armazenar os logs em memória
 let logs = [];
 
-// Endpoint para o dashboard React buscar os logs
+// URL do Mock ERP para ambiente de desenvolvimento local
+const ERP_API_URL = 'http://localhost:3002';
+
+// Função para adicionar logs com timestamp
+const addLog = (type, message) => {
+    const timestamp = new Date().toISOString();
+    const logEntry = { timestamp, type, message };
+    console.log(`[${type}] ${message}`);
+    logs.unshift(logEntry); // Adiciona no início para os mais recentes aparecerem primeiro
+    if (logs.length > 100) {
+        logs.pop(); // Limita o número de logs em memória
+    }
+};
+
+// Função que simula a busca de pedidos na Vtex
+const fetchVtexOrders = async () => {
+    addLog('INFO', 'Buscando novos pedidos na Vtex...');
+    // Simulação: Retorna 3 pedidos novos
+    await new Promise(resolve => setTimeout(resolve, 500)); // Simula latência de rede
+    const orders = [
+        { id: `vtex-${Math.floor(100 + Math.random() * 900)}`, value: 150.00 },
+        { id: `vtex-${Math.floor(100 + Math.random() * 900)}`, value: 250.50 },
+        { id: `vtex-${Math.floor(100 + Math.random() * 900)}`, value: 99.90 },
+    ];
+    addLog('INFO', `Encontrados ${orders.length} pedidos.`);
+    return orders;
+};
+
+// Função que envia o pedido para o ERP
+const sendOrderToErp = async (order) => {
+    try {
+        addLog('INFO', `Enviando pedido ${order.id} para o ERP...`);
+        // O POST é feito para a URL correta do ERP
+        const response = await axios.post(`${ERP_API_URL}/orders`, order);
+        if (response.status === 201) {
+            addLog('SUCCESS', `Pedido ${order.id} integrado com sucesso no ERP.`);
+        } else {
+            addLog('ERROR', `Erro inesperado ao integrar pedido ${order.id}. Status: ${response.status}`);
+        }
+    } catch (error) {
+        addLog('ERROR', `Falha ao conectar com o ERP para o pedido ${order.id}. Detalhes: ${error.message}`);
+    }
+};
+
+// Rotina principal de sincronização
+const syncOrders = async () => {
+    addLog('INFO', 'Iniciando rotina de sincronização de pedidos...');
+    try {
+        const orders = await fetchVtexOrders();
+        for (const order of orders) {
+            await sendOrderToErp(order);
+        }
+    } catch (error) {
+        addLog('ERROR', `Falha na sincronização de pedidos: ${error.message}`);
+    } finally {
+        addLog('INFO', 'Fim da rotina de sincronização.');
+    }
+};
+
+// Endpoint para o painel de controle buscar os logs
 app.get('/logs', (req, res) => {
     res.json(logs);
 });
 
-// --- SIMULAÇÃO DA API DA VTEX ---
-// Esta função simula a busca de pedidos na API da Vtex
-const fetchVtexOrders = () => {
-    console.log('[VTEX] Buscando novos pedidos...');
-    // Simula a descoberta de 1 a 3 novos pedidos
-    const numberOfOrders = Math.floor(Math.random() * 3) + 1;
-    const orders = [];
-    for (let i = 0; i < numberOfOrders; i++) {
-        orders.push({
-            orderId: `vtex-${Date.now() + i}`,
-            total: (Math.random() * 500).toFixed(2),
-            customer: `Cliente ${(Math.random() * 1000).toFixed(0)}`,
-        });
-    }
-    console.log(`[VTEX] Encontrados ${orders.length} pedidos.`);
-    addLog('INFO', `[VTEX] Encontrados ${orders.length} pedidos.`);
-    return orders;
-};
-
-// --- ROTINA DE SINCRONIZAÇÃO ---
-// Função principal que orquestra a integração
-const syncOrders = async () => {
-    console.log('\n[HUB] Iniciando rotina de sincronização de pedidos...');
-    addLog('INFO', '[HUB] Iniciando rotina de sincronização de pedidos...');
-
-    const vtexOrders = fetchVtexOrders();
-
-    if (vtexOrders.length === 0) {
-        console.log('[HUB] Nenhum novo pedido para sincronizar.');
-        addLog('INFO', '[HUB] Nenhum novo pedido para sincronizar.');
-        console.log('[HUB] Fim da rotina de sincronização.');
-        addLog('INFO', '[HUB] Fim da rotina de sincronização.');
-        return;
-    }
-
-    for (const vtexOrder of vtexOrders) {
-        console.log(`[HUB] Enviando pedido ${vtexOrder.orderId} para o ERP...`);
-        addLog('INFO', `[HUB] Enviando pedido ${vtexOrder.orderId} para o ERP...`);
-
-        const erpPayload = {
-            id: vtexOrder.orderId,
-            valorTotal: parseFloat(vtexOrder.total),
-            clienteNome: vtexOrder.customer,
-            status: 'Pendente',
-        };
-
-        try {
-            // Envia a requisição para a API Mock do ERP
-            const response = await axios.post(ERP_API_URL, erpPayload);
-            if (response.status === 201) {
-                console.log(`[ERP] Pedido ${vtexOrder.orderId} recebido com sucesso!`);
-                addLog('SUCCESS', `[ERP] Pedido ${vtexOrder.orderId} recebido com sucesso!`);
-            }
-        } catch (error) {
-            console.error(`[ERRO] Falha na sincronização de pedidos: ${error.message}`);
-            addLog('ERROR', `[HUB] Falha ao enviar pedido ${vtexOrder.orderId}: ${error.message}`);
-        }
-    }
-
-    console.log('[HUB] Fim da rotina de sincronização.');
-    addLog('INFO', '[HUB] Fim da rotina de sincronização.');
-};
-
-// Função para adicionar logs com timestamp e tipo
-const addLog = (type, message) => {
-    const timestamp = new Date().toLocaleTimeString('pt-BR');
-    logs.unshift({ timestamp, type, message }); // Adiciona no início do array
-    if (logs.length > 100) {
-        logs.pop(); // Limita o tamanho do array de logs
-    }
-};
-
-app.listen(port, () => {
-    console.log(`[HUB] Hub de Integração rodando na porta ${port}`);
-    console.log(`[HUB] Conectando ao ERP em: ${ERP_API_URL}`);
-    // Inicia a rotina de sincronização 5 segundos após o servidor iniciar
-    // e a repete a cada 15 segundos
+// Inicia o servidor
+app.listen(PORT, () => {
+    console.log(`[HUB] Hub de Integração rodando na porta ${PORT}`);
+    // Inicia a rotina de sincronização 10 segundos após o início e repete a cada 30 segundos
     setTimeout(() => {
-        syncOrders();
-        setInterval(syncOrders, 15000); // 15 segundos
-    }, 5000);
+        syncOrders(); // Roda a primeira vez
+        setInterval(syncOrders, 30000); // Roda a cada 30 segundos
+    }, 10000);
 });
 

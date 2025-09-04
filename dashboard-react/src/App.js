@@ -1,92 +1,169 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect } from 'react';
 
-// URL da API do nosso Hub de Integração
-const API_URL = 'http://localhost:3001';
+// Os estilos foram movidos para dentro do componente para evitar erros de importação.
+const styles = `
+    body {
+        margin: 0;
+        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
+          'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
+          sans-serif;
+        -webkit-font-smoothing: antialiased;
+        -moz-osx-font-smoothing: grayscale;
+        background-color: #f0f2f5;
+        color: #333;
+    }
+
+    .container {
+        max-width: 900px;
+        margin: 0 auto;
+        padding: 20px;
+    }
+
+    .header {
+        background-color: #ffffff;
+        padding: 20px;
+        border-radius: 8px;
+        margin-bottom: 20px;
+        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+        border-left: 5px solid #007bff;
+    }
+
+    .header h1 {
+        margin: 0;
+        font-size: 1.8em;
+        color: #333;
+    }
+
+    .header p {
+        margin: 5px 0 0;
+        color: #666;
+    }
+
+    .status-connected {
+        color: #28a745;
+        font-weight: bold;
+    }
+
+    .status-error {
+        color: #dc3545;
+        font-weight: bold;
+    }
+
+    .logs-container {
+        background-color: #ffffff;
+        border-radius: 8px;
+        padding: 15px;
+        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+        min-height: 400px;
+    }
+
+    .no-logs {
+        color: #888;
+        text-align: center;
+        padding-top: 50px;
+        font-style: italic;
+    }
+
+    .log-item {
+        display: flex;
+        align-items: center;
+        gap: 15px;
+        padding: 12px;
+        border-bottom: 1px solid #eee;
+        font-size: 0.95em;
+    }
+
+    .log-item:last-child {
+        border-bottom: none;
+    }
+
+    .log-timestamp {
+        font-family: 'Courier New', Courier, monospace;
+        color: #888;
+        font-size: 0.9em;
+    }
+
+    .log-type {
+        padding: 4px 8px;
+        border-radius: 4px;
+        color: #fff;
+        font-weight: bold;
+        font-size: 0.8em;
+        flex-shrink: 0;
+    }
+
+    .log-info { background-color: #17a2b8; }
+    .log-success { background-color: #28a745; }
+    .log-error { background-color: #dc3545; }
+
+    .log-message {
+        margin: 0;
+        flex-grow: 1;
+        word-break: break-word;
+    }
+`;
 
 function App() {
-  const [logs, setLogs] = useState([]);
-  const [isLoading, setIsLoading] = useState(false);
-  const [error, setError] = useState(null);
+    const [logs, setLogs] = useState([]);
+    const [status, setStatus] = useState('Conectando...');
 
-  // Função para buscar os logs do servidor
-  const fetchLogs = useCallback(async () => {
-    try {
-      const response = await fetch(`${API_URL}/logs`);
-      if (!response.ok) {
-        throw new Error('Não foi possível conectar ao servidor do Hub.');
-      }
-      const data = await response.json();
-      setLogs(data);
-    } catch (err) {
-      setError(err.message);
-      setLogs([]); // Limpa os logs em caso de erro
-    }
-  }, []);
+    useEffect(() => {
+        const fetchLogs = async () => {
+            try {
+                const response = await fetch('http://localhost:3001/logs');
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+                const data = await response.json();
+                setLogs(data);
+                setStatus('Conectado');
+            } catch (error) {
+                console.error("Falha ao buscar logs:", error);
+                setStatus('Erro de Conexão');
+            }
+        };
 
-  // useEffect para buscar os logs periodicamente
-  useEffect(() => {
-    fetchLogs(); // Busca inicial
-    const intervalId = setInterval(fetchLogs, 5000); // Busca a cada 5 segundos
-    return () => clearInterval(intervalId); // Limpa o intervalo ao desmontar o componente
-  }, [fetchLogs]);
+        const intervalId = setInterval(fetchLogs, 2000);
+        return () => clearInterval(intervalId);
+    }, []);
 
-  // Função para acionar a sincronização manual
-  const handleSync = async () => {
-    setIsLoading(true);
-    setError(null);
-    try {
-      await fetch(`${API_URL}/actions/sincronizar-pedidos`, { method: 'POST' });
-      // Após acionar, busca os logs imediatamente para refletir a ação
-      setTimeout(fetchLogs, 1000); 
-    } catch (err) {
-      setError('Falha ao acionar a sincronização.');
-    } finally {
-      setIsLoading(false);
-    }
-  };
+    const getLogTypeClass = (type) => {
+        switch (type) {
+            case 'SUCCESS':
+                return 'log-success';
+            case 'ERROR':
+                return 'log-error';
+            case 'INFO':
+            default:
+                return 'log-info';
+        }
+    };
 
-  return (
-    <div className="bg-gray-900 text-white min-h-screen font-sans">
-      <div className="container mx-auto p-4 md:p-8">
-        
-        <header className="text-center mb-8">
-          <h1 className="text-4xl font-bold text-cyan-400">Painel de Integração</h1>
-          <p className="text-gray-400 mt-2">Monitoramento em tempo real da sincronização VTEX ↔ ERP</p>
-        </header>
-
-        <div className="bg-gray-800 shadow-lg rounded-lg p-6 mb-8">
-          <h2 className="text-xl font-semibold mb-4 border-b border-gray-700 pb-2">Controles</h2>
-          <button
-            onClick={handleSync}
-            disabled={isLoading}
-            className="bg-cyan-500 hover:bg-cyan-600 text-white font-bold py-2 px-4 rounded-lg transition duration-300 ease-in-out disabled:bg-gray-600 disabled:cursor-not-allowed"
-          >
-            {isLoading ? 'Sincronizando...' : 'Forçar Sincronização de Pedidos'}
-          </button>
-          {error && <p className="text-red-400 mt-4 animate-pulse">{error}</p>}
-        </div>
-
-        <div className="bg-gray-800 shadow-lg rounded-lg p-6">
-          <h2 className="text-xl font-semibold mb-4 border-b border-gray-700 pb-2">Logs de Eventos</h2>
-          <div className="bg-black rounded-md p-4 h-96 overflow-y-auto font-mono text-sm">
-            {logs.length > 0 ? (
-              logs.map((log, index) => (
-                <div key={index} className="flex">
-                  <span className="text-gray-500 mr-4">{new Date(log.timestamp).toLocaleTimeString()}</span>
-                  <span className={log.message.includes('[ERRO]') ? 'text-red-400' : 'text-green-400'}>
-                    {log.message}
-                  </span>
-                </div>
-              ))
-            ) : (
-              <p className="text-gray-500">Aguardando logs do servidor...</p>
-            )}
-          </div>
-        </div>
-
-      </div>
-    </div>
-  );
+    return (
+        <>
+            <style>{styles}</style>
+            <div className="container">
+                <header className="header">
+                    <h1>Painel de Sincronização</h1>
+                    <p>Status: <span className={status === 'Conectado' ? 'status-connected' : 'status-error'}>{status}</span></p>
+                </header>
+                
+                <main className="logs-container">
+                    {logs.length === 0 ? (
+                        <p className="no-logs">Aguardando logs de sincronização...</p>
+                    ) : (
+                        logs.map((log, index) => (
+                            <div key={index} className="log-item">
+                                <span className="log-timestamp">{log.timestamp}</span>
+                                <span className={`log-type ${getLogTypeClass(log.type)}`}>{log.type}</span>
+                                <p className="log-message">{log.message}</p>
+                            </div>
+                        ))
+                    )}
+                </main>
+            </div>
+        </>
+    );
 }
 
 export default App;
