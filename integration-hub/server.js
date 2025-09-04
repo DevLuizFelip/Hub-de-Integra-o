@@ -1,98 +1,105 @@
-// --- HUB DE INTEGRAÇÃO E-COMMERCE (VTEX <-> ERP) ---
-// Este é o servidor principal do projeto.
-
 const express = require('express');
-const axios = require('axios');
 const cors = require('cors');
-
+const axios = require('axios');
 const app = express();
-app.use(express.json());
+const port = 3001;
+
+// --- ALTERAÇÃO PRINCIPAL ---
+// Lê a URL da API do ERP a partir de uma variável de ambiente.
+// Se a variável não for definida, usa 'localhost' como padrão para desenvolvimento local.
+const ERP_API_URL = process.env.ERP_API_URL || 'http://localhost:3002/pedido';
+
 app.use(cors());
+app.use(express.json());
 
-const PORT = 3001;
-const ERP_API_URL = 'http://erp-mock:3002'; // Nome do serviço no docker-compose
+// Armazena os logs de sincronização em memória
+let logs = [];
 
-// --- BANCO DE DADOS SIMULADO ---
-const pedidosIntegrados = new Set();
-const logEventos = []; // Array para guardar os logs para o frontend
+// Endpoint para o dashboard React buscar os logs
+app.get('/logs', (req, res) => {
+    res.json(logs);
+});
 
-// Função para adicionar logs com timestamp
-const addLog = (message) => {
-  const timestamp = new Date().toISOString();
-  console.log(message);
-  logEventos.unshift({ timestamp, message }); // Adiciona no início para o mais recente aparecer primeiro
-  if (logEventos.length > 100) logEventos.pop(); // Limita o tamanho do log
+// --- SIMULAÇÃO DA API DA VTEX ---
+// Esta função simula a busca de pedidos na API da Vtex
+const fetchVtexOrders = () => {
+    console.log('[VTEX] Buscando novos pedidos...');
+    // Simula a descoberta de 1 a 3 novos pedidos
+    const numberOfOrders = Math.floor(Math.random() * 3) + 1;
+    const orders = [];
+    for (let i = 0; i < numberOfOrders; i++) {
+        orders.push({
+            orderId: `vtex-${Date.now() + i}`,
+            total: (Math.random() * 500).toFixed(2),
+            customer: `Cliente ${(Math.random() * 1000).toFixed(0)}`,
+        });
+    }
+    console.log(`[VTEX] Encontrados ${orders.length} pedidos.`);
+    addLog('INFO', `[VTEX] Encontrados ${orders.length} pedidos.`);
+    return orders;
 };
 
-/**
- * Função principal que busca novos pedidos na "VTEX" e os envia para o ERP.
- */
-async function sincronizarPedidosVtexParaErp() {
-    addLog('------------------------------------');
-    addLog('[HUB] Iniciando rotina de sincronização de pedidos...');
+// --- ROTINA DE SINCRONIZAÇÃO ---
+// Função principal que orquestra a integração
+const syncOrders = async () => {
+    console.log('\n[HUB] Iniciando rotina de sincronização de pedidos...');
+    addLog('INFO', '[HUB] Iniciando rotina de sincronização de pedidos...');
 
-    try {
-        const mockVtexResponse = {
-            data: [
-                { id: `vtex-${100 + Math.floor(Math.random() * 10)}`, total: 150.50, cliente: 'João Silva', itens: [{ nome: 'Livro', qtd: 1 }] },
-                { id: 'vtex-102', total: 99.99, cliente: 'Maria Souza', itens: [{ nome: 'Fone de ouvido', qtd: 1 }] },
-                { id: `vtex-${103 + Math.floor(Math.random() * 10)}`, total: 45.00, cliente: 'Carlos Pereira', itens: [{ nome: 'Caneca', qtd: 2 }] },
-            ]
+    const vtexOrders = fetchVtexOrders();
+
+    if (vtexOrders.length === 0) {
+        console.log('[HUB] Nenhum novo pedido para sincronizar.');
+        addLog('INFO', '[HUB] Nenhum novo pedido para sincronizar.');
+        console.log('[HUB] Fim da rotina de sincronização.');
+        addLog('INFO', '[HUB] Fim da rotina de sincronização.');
+        return;
+    }
+
+    for (const vtexOrder of vtexOrders) {
+        console.log(`[HUB] Enviando pedido ${vtexOrder.orderId} para o ERP...`);
+        addLog('INFO', `[HUB] Enviando pedido ${vtexOrder.orderId} para o ERP...`);
+
+        const erpPayload = {
+            id: vtexOrder.orderId,
+            valorTotal: parseFloat(vtexOrder.total),
+            clienteNome: vtexOrder.customer,
+            status: 'Pendente',
         };
-        const novosPedidos = mockVtexResponse.data;
-        addLog(`[VTEX] Encontrados ${novosPedidos.length} pedidos.`);
 
-        for (const pedido of novosPedidos) {
-            if (pedidosIntegrados.has(pedido.id)) {
-                addLog(`[HUB] Pedido ${pedido.id} já integrado. Pulando.`);
-                continue;
+        try {
+            // Envia a requisição para a API Mock do ERP
+            const response = await axios.post(ERP_API_URL, erpPayload);
+            if (response.status === 201) {
+                console.log(`[ERP] Pedido ${vtexOrder.orderId} recebido com sucesso!`);
+                addLog('SUCCESS', `[ERP] Pedido ${vtexOrder.orderId} recebido com sucesso!`);
             }
-
-            const pedidoParaErp = {
-                origem: 'VTEX',
-                codigoPedido: pedido.id,
-                valorTotal: pedido.total,
-                nomeCliente: pedido.cliente,
-                produtos: pedido.itens
-            };
-
-            addLog(`[HUB] Enviando pedido ${pedido.id} para o ERP...`);
-            await axios.post(`${ERP_API_URL}/pedidos`, pedidoParaErp);
-
-            pedidosIntegrados.add(pedido.id);
-            addLog(`[ERP] Pedido ${pedido.id} recebido com sucesso!`);
+        } catch (error) {
+            console.error(`[ERRO] Falha na sincronização de pedidos: ${error.message}`);
+            addLog('ERROR', `[HUB] Falha ao enviar pedido ${vtexOrder.orderId}: ${error.message}`);
         }
-
-    } catch (error) {
-        addLog(`[ERRO] Falha na sincronização de pedidos: ${error.message}`);
-    } finally {
-        addLog('[HUB] Fim da rotina de sincronização.');
     }
-}
 
-// --- ENDPOINTS DA API DO HUB ---
+    console.log('[HUB] Fim da rotina de sincronização.');
+    addLog('INFO', '[HUB] Fim da rotina de sincronização.');
+};
 
-app.get('/logs', (req, res) => {
-    res.status(200).json(logEventos);
-});
-
-app.post('/actions/sincronizar-pedidos', async (req, res) => {
-    addLog('[HUB] Sincronização manual de pedidos acionada via API.');
-    await sincronizarPedidosVtexParaErp();
-    res.status(200).json({ message: 'Rotina de sincronização de pedidos executada.' });
-});
-
-app.post('/webhooks/erp/estoque-atualizado', (req, res) => {
-    const { idProduto, novoEstoque } = req.body;
-    if (!idProduto || novoEstoque === undefined) {
-        return res.status(400).json({ error: 'Faltando idProduto ou novoEstoque.' });
+// Função para adicionar logs com timestamp e tipo
+const addLog = (type, message) => {
+    const timestamp = new Date().toLocaleTimeString('pt-BR');
+    logs.unshift({ timestamp, type, message }); // Adiciona no início do array
+    if (logs.length > 100) {
+        logs.pop(); // Limita o tamanho do array de logs
     }
-    addLog(`[HUB] Recebido webhook do ERP: Atualizar estoque do produto ${idProduto} para ${novoEstoque} unidades.`);
-    addLog(`[HUB] -> Chamando API da VTEX para realizar a atualização... (Simulado)`);
-    res.status(200).json({ message: `Webhook de estoque para o produto ${idProduto} processado.` });
+};
+
+app.listen(port, () => {
+    console.log(`[HUB] Hub de Integração rodando na porta ${port}`);
+    console.log(`[HUB] Conectando ao ERP em: ${ERP_API_URL}`);
+    // Inicia a rotina de sincronização 5 segundos após o servidor iniciar
+    // e a repete a cada 15 segundos
+    setTimeout(() => {
+        syncOrders();
+        setInterval(syncOrders, 15000); // 15 segundos
+    }, 5000);
 });
 
-app.listen(PORT, () => {
-    console.log(`🚀 Hub de Integração rodando na porta ${PORT}`);
-    setInterval(sincronizarPedidosVtexParaErp, 60000); // Roda a cada 60 segundos
-});
